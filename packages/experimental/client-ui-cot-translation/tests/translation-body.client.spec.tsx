@@ -15,7 +15,7 @@ afterEach(cleanup)
 
 function fixture() {
   const preferences = createSnapshotStore<CotTranslationPreferences>({ provider: 'google', targetLanguage: 'auto' })
-  const locale = createSnapshotStore<LocaleSnapshot>({ active: 'zh', locales: [], revision: 0 })
+  const locale = createSnapshotStore<LocaleSnapshot>({ active: 'zh', stack: ['zh'], locales: [], revision: 0 })
   const translationLimit = createSnapshotStore(4000)
   const translate = vi.fn<TranslateText>(async request => `${request.provider}:${request.targetLanguage}:${request.text}`)
   const props = { text: 'Original paragraph', running: false, translate, renderFactorySlot, t: makeTranslate(en),

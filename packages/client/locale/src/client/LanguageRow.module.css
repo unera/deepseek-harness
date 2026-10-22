@@ -1,9 +1,11 @@
 /* Language row (figma 'Setting-Cell': gap 8, pad 16/0, hairline separator;
- * the section column removes the separator on its last child). */
+ * the section column removes the separator on its last child). The control
+ * side is a priority-ordered list rather than one pill, so the cell aligns to
+ * the top and the title keeps the standard 14/22 metrics. */
 
 .row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   padding: 16px 0;
   border-bottom: 0.5px solid var(--dsw-alias-border-l2);
@@ -25,27 +27,121 @@
   color: var(--dsw-alias-label-primary);
 }
 
-/* Language selector uses the standard control size. */
-.selector {
-  display: inline-flex;
+.hint {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* Control column: the ordered list plus the add trigger under it. */
+.stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.empty {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One language: the standard control height so five entries stay a list. */
+.item {
+  display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   height: 36px;
-  padding: 0 14px;
-  border: none;
+  padding: 0 6px 0 10px;
   border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-module-platform);
-  font: inherit;
+}
+
+.priority {
+  flex: none;
+  min-width: 12px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 14px;
   line-height: 22px;
   color: var(--dsw-alias-label-primary);
+}
+
+.unavailable {
+  flex: none;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.control {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
   cursor: pointer;
 }
 
-.selector:hover {
+.control:hover:not(:disabled) {
   background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
 }
 
-.chevron {
+.control:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Add trigger uses the standard control size, like the former selector. */
+.add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.add:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.plus {
   flex: none;
 }

@@ -10,21 +10,24 @@ import {
   apply, inject, SETTINGS_NS,
 } from '@deepseek-ai/dsh-client-locale/client'
 import type { LanguageRowInjected, LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
-import { LOCALE_SETTINGS_NAMESPACE, LocaleSettingsSchema } from '../src/locale-settings.ts'
+import { LOCALE_SETTINGS_NAMESPACE, LOCALE_STACK_FIELD, LocaleSettingsSchema } from '../src/locale-settings.ts'
 import { LanguageRow } from '../src/client/LanguageRow.tsx'
 import type { createLanguageRowStore } from '../src/client/settings-store.ts'
 
 const SLOT = 'settings.general.item'
 afterEach(() => { vi.unstubAllGlobals() })
 
-async function bench(preference?: string) {
+async function bench(preference?: string, languages?: string[]) {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
   let revision = 0
   const namespace = () => ({
     ns: LOCALE_SETTINGS_NAMESPACE,
     schema: LocaleSettingsSchema.toJSON(),
-    value: preference === undefined ? {} : { preference },
+    value: {
+      ...preference === undefined ? {} : { preference },
+      ...languages === undefined ? {} : { languages },
+    },
     autoGenerate: true, applies: 'live' as const,
     secrets: [],
     revision,
@@ -33,8 +36,11 @@ async function bench(preference?: string) {
     ok: true as const,
     value: { writable: true, hasDocument: true, namespaces: [namespace()] },
   }))
-  const mutate = vi.fn(async (_ns: string, ops: { value: string }[]) => {
-    preference = ops[0]!.value
+  const mutate = vi.fn(async (_ns: string, ops: { path: string[]; value: unknown }[]) => {
+    for (const op of ops) {
+      if (op.path[0] === LOCALE_STACK_FIELD) languages = op.value as string[]
+      else preference = op.value as string
+    }
     revision += 1
     return { ok: true as const, value: namespace() }
   })
@@ -189,6 +195,41 @@ describe('locale apply', () => {
 
     await languagePack.dispose()
     expect(instance.getSnapshot().options.map(option => option.id)).toEqual(['zh', 'en'])
+  })
+
+  it('projects the ordered stack into the row and routes stack writes back', async () => {
+    const b = await bench(undefined, ['zh', 'en'])
+    declareItems(b.slots)
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    const locale = b.ctx.get('locale') as LocaleRuntime
+    const { instance, face } = faceOf(b.slots)
+    // The document's order reaches the mirror whole, not just its head.
+    expect(instance.getSnapshot().stack).toEqual(['zh', 'en'])
+    expect(instance.getSnapshot().active).toBe('zh')
+
+    face.setLanguages(['en', 'zh'])
+    expect(locale.getLocale().stack).toEqual(['en', 'zh'])
+    expect(locale.getLocale().active).toBe('en')
+    expect(instance.getSnapshot().stack).toEqual(['en', 'zh'])
+    expect(instance.getSnapshot().active).toBe('en')
+    // The whole stack is durable and the legacy head field trails it.
+    await vi.waitFor(() => { expect(b.mutate).toHaveBeenCalledTimes(2) })
+    expect(b.mutate).toHaveBeenCalledWith(LOCALE_SETTINGS_NAMESPACE, [
+      { path: [LOCALE_STACK_FIELD], value: ['en', 'zh'], op: 'set' },
+    ], 0)
+  })
+
+  it('clears the durable preference when the row empties the stack', async () => {
+    const b = await bench(undefined, ['zh', 'en'])
+    declareItems(b.slots)
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    const { instance, face } = faceOf(b.slots)
+    face.setLanguages([])
+    expect(instance.getSnapshot().stack).toEqual([])
+    await vi.waitFor(() => { expect(b.mutate).toHaveBeenCalledTimes(2) })
+    expect(b.mutate).toHaveBeenLastCalledWith(LOCALE_SETTINGS_NAMESPACE, [
+      { path: ['preference'], op: 'unset' },
+    ], 1)
   })
 
   it('loads and refreshes the explicit Host preference after nonblocking activation', async () => {

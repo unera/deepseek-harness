@@ -16,7 +16,13 @@ const usePanelInfo: GlobalStandardProps['usePanelInfo'] = selector => selector({
 
 afterEach(cleanup)
 
-const OPTIONS = [{ id: 'zh', label: '中文' }, { id: 'en', label: 'English' }]
+const OPTIONS = [
+  { id: 'zh', label: '中文' },
+  { id: 'en', label: 'English' },
+  { id: 'ja', label: '日本語' },
+  { id: 'ru', label: 'Русский' },
+  { id: 'pt-BR', label: 'Português (Brasil)' },
+]
 
 function emptySessions() {
   const store = createSnapshotStore<SessionListState>(
@@ -34,11 +40,12 @@ type AttentionSnapshot = Parameters<Parameters<LanguageRowComponentProps['useSes
 const noAttention: AttentionSnapshot = new Map()
 const useSessionStatus: LanguageRowComponentProps['useSessionStatus'] = selector => selector(noAttention)
 
-function mount(active = 'en') {
+function mount(stack: readonly string[], active = stack[0] ?? 'zh', options = OPTIONS) {
   // Real store instance — the sanctioned zero-machinery path for tests.
   const store = createLanguageRowStore().create()
-  store.actions.sync(active, OPTIONS, 0)
+  store.actions.sync(active, options, stack, 0)
   const setLocale = vi.fn()
+  const setLanguages = vi.fn()
   const props: LanguageRowComponentProps = {
     useSessions: emptySessions(),
     useSessionStatus,
@@ -47,46 +54,94 @@ function mount(active = 'en') {
     ...allowAllAccess,
     useStore: bindSnapshotSelector(store),
     actions: store.actions,
-    t: (key: string) => key === 'language.title' ? 'Language' : key,
+    t: (key: string) => key,
     setLocale,
+    setLanguages,
   }
   render(<LanguageRow {...props} />)
-  return { store, setLocale }
+  return { store, setLocale, setLanguages }
+}
+
+/** Read the rendered priority list as `[position, label]` pairs. */
+function listLabels(): string[] {
+  return screen.getAllByRole('listitem').map(item => item.querySelector('span:nth-child(2)')?.textContent ?? '')
 }
 
 describe('LanguageRow', () => {
-  it('shows the title and the active locale label on the selector pill', () => {
-    mount('en')
-    expect(screen.getByText('Language')).toBeDefined()
-    const trigger = screen.getByRole('button', { name: /English/ })
-    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+  it('lists the stack in priority order under the row title', () => {
+    mount(['zh', 'en', 'ja'])
+    expect(screen.getByText('language.title')).toBeDefined()
+    expect(screen.getByText('language.hint')).toBeDefined()
+    expect(listLabels()).toEqual(['中文', 'English', '日本語'])
+    expect(screen.getAllByRole('listitem').map(item => item.textContent)).toHaveLength(3)
+    expect(screen.getAllByRole('listitem')[0]!.textContent).toContain('1')
   })
 
-  it('opens the menu, selects a locale, and closes', () => {
-    const b = mount('en')
-    const trigger = screen.getByRole('button', { name: /English/ })
+  it('shows the browser-following state when the stack is empty', () => {
+    mount([])
+    expect(screen.getByText('language.empty')).toBeDefined()
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0)
+  })
+
+  it('offers only languages the catalog has, and appends the picked one last', () => {
+    const b = mount(['zh', 'en'])
+    const trigger = screen.getByRole('button', { name: 'language.add' })
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(trigger)
     expect(trigger.getAttribute('aria-expanded')).toBe('true')
-    fireEvent.click(screen.getByRole('menuitem', { name: '中文' }))
-    expect(b.setLocale).toHaveBeenCalledWith('zh')
-    expect(trigger.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByRole('menuitem', { name: '中文' })).toBeNull()
+    // zh and en are already ranked; the three others are the candidates.
+    expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['日本語', 'Русский', 'Português (Brasil)'])
+    fireEvent.click(screen.getByRole('menuitem', { name: '日本語' }))
+    expect(b.setLanguages).toHaveBeenCalledWith(['zh', 'en', 'ja'])
+    // The picker closes on selection, like the former selector menu.
+    expect(screen.queryAllByRole('menuitem')).toHaveLength(0)
   })
 
-  it('closes on outside pointerdown without selecting', () => {
-    const b = mount('en')
-    fireEvent.click(screen.getByRole('button', { name: /English/ }))
-    expect(screen.getByRole('menuitem', { name: '中文' })).toBeDefined()
+  it('closes the picker on outside pointerdown without writing', () => {
+    const b = mount(['zh'])
+    fireEvent.click(screen.getByRole('button', { name: 'language.add' }))
+    expect(screen.getAllByRole('menuitem')).toHaveLength(4)
     fireEvent.pointerDown(document.body)
-    expect(screen.queryByRole('menuitem', { name: '中文' })).toBeNull()
-    expect(b.setLocale).not.toHaveBeenCalled()
+    expect(screen.queryAllByRole('menuitem')).toHaveLength(0)
+    expect(b.setLanguages).not.toHaveBeenCalled()
   })
 
-  it('follows store changes; an unknown active id falls back to the id itself', () => {
-    const b = mount('en')
-    act(() => { b.store.actions.sync('zh', OPTIONS, 1) })
-    expect(screen.getByRole('button', { name: /中文/ })).toBeDefined()
-    act(() => { b.store.actions.sync('fr', OPTIONS, 2) })
-    expect(screen.getByRole('button', { name: /fr/ })).toBeDefined()
+  it('moves an entry up and down, without offering a move past either end', () => {
+    const b = mount(['zh', 'en', 'ja'])
+    // The head cannot move up and the tail cannot move down.
+    expect(screen.getByRole('button', { name: 'language.moveUp 中文' })).toHaveProperty('disabled', true)
+    expect(screen.getByRole('button', { name: 'language.moveDown 日本語' })).toHaveProperty('disabled', true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'language.moveDown 中文' }))
+    expect(b.setLanguages).toHaveBeenLastCalledWith(['en', 'zh', 'ja'])
+    fireEvent.click(screen.getByRole('button', { name: 'language.moveUp 日本語' }))
+    expect(b.setLanguages).toHaveBeenLastCalledWith(['zh', 'ja', 'en'])
+  })
+
+  it('removes one language and keeps the rest of the order', () => {
+    const b = mount(['zh', 'en', 'ja'])
+    fireEvent.click(screen.getByRole('button', { name: 'language.remove English' }))
+    expect(b.setLanguages).toHaveBeenCalledWith(['zh', 'ja'])
+  })
+
+  it('keeps a stored language whose pack is gone, marked as not installed', () => {
+    const b = mount(['fr', 'en'])
+    // No label and no pack entry: the raw id stands in, so it can be removed.
+    expect(listLabels()).toEqual(['fr', 'English'])
+    expect(screen.getByText('language.unavailable')).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'language.remove fr' }))
+    expect(b.setLanguages).toHaveBeenCalledWith(['en'])
+  })
+
+  it('follows store changes and stays usable with the whole five-language stack', () => {
+    const b = mount(['zh', 'en'])
+    const five = OPTIONS.map(option => option.id)
+    act(() => { b.store.actions.sync('pt-BR', OPTIONS, five, 1) })
+    expect(listLabels()).toEqual(['中文', 'English', '日本語', 'Русский', 'Português (Brasil)'])
+    expect(screen.getByRole('button', { name: 'language.moveUp Português (Brasil)' })).toHaveProperty('disabled', false)
+    expect(screen.getByRole('button', { name: 'language.moveDown Português (Brasil)' })).toHaveProperty('disabled', true)
+    // Every catalog language is ranked, so the picker has nothing to offer.
+    fireEvent.click(screen.getByRole('button', { name: 'language.add' }))
+    expect(screen.queryAllByRole('menuitem')).toHaveLength(0)
   })
 })

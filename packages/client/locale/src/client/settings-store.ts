@@ -17,7 +17,9 @@ export interface LanguageOptionRow {
 export interface LanguageRowState {
   /** Active locale id. */
   active: string
-  /** Selectable locales in display order. */
+  /** Ordered preference stack, most preferred first (may name uninstalled ids). */
+  stack: string[]
+  /** Selectable locales in display order — the languages this client can render. */
   options: LanguageOptionRow[]
   /** Service revision; -1 until first sync so revision 0 lands as a change. */
   revision: number
@@ -25,7 +27,13 @@ export interface LanguageRowState {
 
 /** Declared action shape giving the exported factory a stable return type. */
 type LanguageRowActions = {
-  sync: (draft: LanguageRowState, active: string, options: LanguageOptionRow[], revision: number) => void
+  sync: (
+    draft: LanguageRowState,
+    active: string,
+    options: LanguageOptionRow[],
+    stack: readonly string[],
+    revision: number,
+  ) => void
 }
 
 /**
@@ -34,12 +42,15 @@ type LanguageRowActions = {
  */
 export function createLanguageRowStore(): EngineStoreHandle<LanguageRowState, LanguageRowActions> {
   return defineStore({
-    init: (): LanguageRowState => ({ active: '', options: [], revision: -1 }),
+    init: (): LanguageRowState => ({ active: '', stack: [], options: [], revision: -1 }),
     actions: {
-      sync: (d, active: string, options: LanguageOptionRow[], revision: number) => {
+      sync: (
+        d, active: string, options: LanguageOptionRow[], stack: readonly string[], revision: number,
+      ) => {
         if (revision <= d.revision) return
         d.active = active
         d.options = options
+        d.stack = [...stack]
         d.revision = revision
       },
     },

@@ -140,8 +140,14 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'setLocale(id: string): void',
-        description: 'Switch the active locale — the only user preference write entry.\n\nThe durable write happens even when the id already matches the active locale, because the active value may be a provisional browser-derived or fallback resolution that nothing has stored yet. Picking the language already on screen is still an explicit choice, and it must survive a different browser sharing the same DSH home. Only the render notification is conditional: republishing an unchanged locale would churn every subscriber for nothing.',
+        description: 'Switch the active locale — the single-language preference write entry.\n\nThe durable write happens even when the id already matches the active locale, because the active value may be a provisional browser-derived or fallback resolution that nothing has stored yet. Picking the language already on screen is still an explicit choice, and it must survive a different browser sharing the same DSH home. Only the render notification is conditional: republishing an unchanged locale would churn every subscriber for nothing.\n\nA single id means a stack of one, exactly as before this stack existed: naming one language leaves nothing behind it to answer its gaps, and a stored order is replaced rather than kept.',
         parameters: [{ name: 'id', description: 'a registered locale id; unknown ids throw.' }],
+      },
+      {
+        signature: 'setLanguages(ids: readonly LocaleId[]): void',
+        description: 'Replace the ordered language stack — the whole-preference write entry.\n\nThe head is the language on screen; every later entry answers keys the earlier ones lack. An id naming a language this catalog does not have is accepted and stored (a pack may be uninstalled or arrive later): it is skipped at resolution rather than rejected. An empty stack clears the explicit preference and returns to the browser-derived locale, which is the state a document without `languages` has always had.',
+        parameters: [{ name: 'ids', description: 'language ids in priority order.' }],
+        throws: ['when an id is malformed, repeated, or the stack exceeds {@link LOCALE_STACK_MAX_LENGTH} languages.'],
       },
       {
         signature: 'addLanguage(input: LanguageRegistration): () => void',
@@ -725,7 +731,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LocaleSnapshot',
-    declaration: 'export interface LocaleSnapshot {\n    active: LocaleId;\n    locales: readonly LocaleDefinition[];\n    revision: number;\n}',
+    declaration: 'export interface LocaleSnapshot {\n    active: LocaleId;\n    stack: readonly LocaleId[];\n    locales: readonly LocaleDefinition[];\n    revision: number;\n}',
   },
   {
     name: 'MainPanelId',
